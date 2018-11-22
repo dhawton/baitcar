@@ -18,6 +18,7 @@ namespace Baitcar
         private bool IAmInBaitcar = false;
         private bool CarLockeddown = false;
         private Blip bcBlip;
+        private bool vehicleHasMoved = false;
 
         public Client()
         {
@@ -28,7 +29,6 @@ namespace Baitcar
             Tick += blip;
             Tick += vehicleTrack;
 
-            EventHandlers["esx:setJob"] += new Action<string>(setJob);
             EventHandlers["Baitcar.Install"] += new Action(bc_install);
             EventHandlers["Baitcar.VehicleActivity"] += new Action<string>(vehicleActivity);
             EventHandlers["Baitcar.YouAreInBaitcar"] += new Action(inBaitcar);
@@ -37,8 +37,10 @@ namespace Baitcar
             EventHandlers["Baitcar.UpdateBlip"] += new Action<float, float, float>(blipUpdate);
             EventHandlers["Baitcar.Unlocked"] += new Action(unlockCar);
             EventHandlers["Baitcar.Reset"] += new Action(resetCar);
+            EventHandlers["Baitcar.hasJob"] += new Action<string>(hasJob);
 
             TriggerServerEvent("Baitcar.checkIn");
+            TriggerServerEvent("Baitcar.getJob");
         }
 
         public async Task onTick()
@@ -53,8 +55,9 @@ namespace Baitcar
                 if (GetPedInVehicleSeat(GetVehiclePedIsIn(GetPlayerPed(-1), false), -1) == GetPlayerPed(-1))
                 {
                     SetVehicleEngineOn(_veh, false, true, false);
-                    SetVehicleAlarm(_veh, true);
-                    SetVehicleAlarmTimeLeft(_veh, 1000);
+                    // This would get annoying.
+                    //SetVehicleAlarm(_veh, true);
+                    //SetVehicleAlarmTimeLeft(_veh, 1000);
                     SetVehicleDoorsLockedForAllPlayers(_veh, true);
                     SetVehicleIndicatorLights(_veh, 0, true);
                     SetVehicleIndicatorLights(_veh, 1, true);
@@ -80,12 +83,20 @@ namespace Baitcar
             int _veh = GetVehiclePedIsIn(GetPlayerPed(-1), false);
             if (_veh != 0 && !wasInCar)
             {
+                // Check if we entered a car, server will tell us via an event trigger if it's a baitcar.
                 TriggerServerEvent("Baitcar.EnteredCar", _veh);
                 wasInCar = true;
+                vehicleHasMoved = false;
             } else if (_veh == 0 && wasInCar && IAmInBaitcar)
             {
+                // We exited baitcar.
                 TriggerServerEvent("Baitcar.ExitedBaitcar");
-                wasInCar = IAmInBaitcar = false;
+                wasInCar = IAmInBaitcar = vehicleHasMoved = false;
+            } else if (_veh != 0 && wasInCar && IAmInBaitcar && GetEntitySpeed(_veh) > 0.0f && !vehicleHasMoved)
+            {
+                // Baitcar is moving.
+                vehicleHasMoved = true;
+                TriggerServerEvent("Baitcar.Vroom");
             }
 
             await Delay(0);
@@ -127,15 +138,16 @@ namespace Baitcar
             if (GetPedInVehicleSeat(GetVehiclePedIsIn(GetPlayerPed(-1), false), -1) == GetPlayerPed(-1))
             {
                 SetVehicleEngineOn(_veh, true, true, false);
+                /* This would get annoying...
                 SetVehicleAlarm(_veh, false);
-                SetVehicleAlarmTimeLeft(_veh, 0);
+                SetVehicleAlarmTimeLeft(_veh, 0); */
                 SetVehicleDoorsLockedForAllPlayers(_veh, false);
                 SetVehicleIndicatorLights(_veh, 0, false);
                 SetVehicleIndicatorLights(_veh, 1, false);
             }
         }
 
-        private void setJob(string job)
+        private void hasJob(string job)
         {
             hasControlJob = config.jobs.Contains(job);
             Debug.WriteLine("[Baitcar] Has control job? {0}", hasControlJob.ToString());
@@ -169,8 +181,17 @@ namespace Baitcar
             if (!IAmInBaitcar) return;
 
             CarLockeddown = true;
-            // Only do engine stuff if in driver seat.
+            int _veh = GetVehiclePedIsIn(GetPlayerPed(-1), false);
+            SetVehicleEngineOn(_veh, false, true, false); // Turn off engine instantly
+            // This would get annoying, not to mention it's hard for LEO to give instructions over noise.
+            //SetVehicleAlarm(_veh, true);
+            //SetVehicleAlarmTimeLeft(_veh, 1000);
+            SetVehicleDoorsLockedForAllPlayers(_veh, true); // No escape
+            SetVehicleIndicatorLights(_veh, 0, true); // Turn on indicators! (Driver Side)
+            SetVehicleIndicatorLights(_veh, 1, true); // Turn on the other indicators! (Passenger Side)
 
+            Screen.DisplayHelpTextThisFrame("BUSTED! This is a baitcar.");
+            // occupants.adrenaline += 100000;
         }
 
         private void unlockCar()
@@ -185,7 +206,7 @@ namespace Baitcar
 
         private void checkIn(int id)
         {
-            Debug.WriteLine("[Baitcar]  Got response to check in, baitcar ID: {0}.", id.ToString());
+            Debug.WriteLine("[Baitcar] Got response to check in, baitcar ID: {0}.", id.ToString());
         }
 
         private void blipUpdate(float x, float y, float z)
