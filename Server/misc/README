@@ -1,0 +1,12 @@
+﻿This is the baitcar script.
+
+Usage:
+/baitcar (cmd)
+
+Commands:
+install
+arm
+lock
+unlock
+remove
+reset
